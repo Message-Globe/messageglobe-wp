@@ -1,0 +1,115 @@
+name: Build & release plugin zip
+
+# On a version tag (v1.2.3) this rebuilds the natively-installable plugin zip
+# — production Composer deps bundled under a "messageglobe/" folder — and
+# attaches it to that tag's GitHub Release. A manual run uploads the same zip as
+# a build artifact instead, so a build can be verified without cutting a release.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version for a manual build (defaults to the plugin header)'
+        required: false
+        default: ''
+      drop_bundled_phpmailer:
+        description: 'Drop the bundled PHPMailer (WordPress core provides it) to avoid class collisions'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer:v2
+          coverage: none
+
+      - name: Resolve version
+        id: v
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="$(grep -E '^\s*\*\s*Version:' messageglobe.php | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building version $VERSION"
+
+      - name: Check header matches tag
+        if: github.event_name == 'push'
+        run: |
+          HEADER="$(grep -E '^\s*\*\s*Version:' messageglobe.php | sed -E 's/.*Version:[[:space:]]*//' | tr -d '[:space:]')"
+          if [ "$HEADER" != "${{ steps.v.outputs.version }}" ]; then
+            echo "::warning::Plugin header version ($HEADER) does not match the tag (${{ steps.v.outputs.version }}). Bump the header and the readme.txt stable tag."
+          fi
+
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Drop bundled PHPMailer (optional hardening)
+        if: github.event.inputs.drop_bundled_phpmailer == 'true'
+        run: |
+          # WordPress core ships PHPMailer, and this plugin never uses the SDK's
+          # mailer (it configures core's PHPMailer via the phpmailer_init hook),
+          # so the bundled copy is pure collision risk. Mark it as provided by
+          # the platform and drop it — without disturbing the other packages.
+          composer config replace.phpmailer/phpmailer '*'
+          composer update phpmailer/phpmailer --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Build installable zip
+        id: zip
+        run: |
+          VERSION="${{ steps.v.outputs.version }}"
+          rm -rf build && mkdir -p build/messageglobe
+          rsync -a \
+            --exclude='.git' --exclude='.github' --exclude='.gitignore' \
+            --exclude='build' --exclude='PLAN.md' --exclude='composer.lock' \
+            --exclude='.DS_Store' \
+            ./ build/messageglobe/
+          cd build
+          zip -r -q -X "messageglobe-${VERSION}.zip" messageglobe -x '*.DS_Store'
+          echo "file=build/messageglobe-${VERSION}.zip" >> "$GITHUB_OUTPUT"
+          echo "name=messageglobe-${VERSION}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Verify zip structure
+        run: |
+          ZIP="${{ steps.zip.outputs.file }}"
+          for path in messageglobe/messageglobe.php messageglobe/vendor/autoload.php messageglobe/includes/Core/Plugin.php; do
+            unzip -l "$ZIP" | grep -q " ${path}$" || { echo "::error::Missing ${path} in zip"; exit 1; }
+          done
+          if unzip -l "$ZIP" | grep -qE 'messageglobe/(\.git|\.github)/'; then
+            echo "::error::Zip contains VCS/CI files"; exit 1
+          fi
+          echo "Zip contents summary:"
+          unzip -l "$ZIP" | tail -1
+
+      - name: Attach to release (tag builds)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.zip.outputs.file }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+
+      - name: Upload artifact (manual builds)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.zip.outputs.name }}
+          path: ${{ steps.zip.outputs.file }}
+          if-no-files-found: error

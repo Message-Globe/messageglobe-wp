@@ -80,11 +80,20 @@ so the bundled PHPMailer can never collide with core's. Dev installs run plain
 ## Build & release
 
 - Dev: `composer install` in the plugin dir.
-- Release: `composer install --no-dev`, PHP-Scoper the `vendor/` tree, build the
-  `.zip`. Ship to the WordPress.org SVN repo (GPL-2.0-or-later; the MIT SDK is
-  GPL-compatible). Repo: `Message-Globe/messageglobe-wp`.
+- Tagged release: pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`,
+  which installs production deps and attaches the natively-installable
+  `messageglobe-X.Y.Z.zip` (a `messageglobe/`-rooted tree with `vendor/`
+  bundled — no Composer needed on the server) to that tag's GitHub Release. A
+  manual workflow run uploads the same zip as an artifact for testing.
+- PHPMailer collision: the workflow's optional "drop bundled PHPMailer" input
+  removes the bundled copy (WordPress core provides it, and this plugin only
+  uses core's via `phpmailer_init`). For full dependency isolation — e.g. if a
+  future dependency must be bundled and shielded — run PHP-Scoper instead to
+  prefix `vendor/` to `MessageGlobe\WP\Vendor\…`.
+- WordPress.org: GPL-2.0-or-later (the MIT SDK is GPL-compatible). Repo:
+  `Message-Globe/messageglobe-wp`.
 - Freemium: free core = SMTP + basic SMS + WooCommerce order SMS; pro add-ons =
-  OTP, forms, abandoned cart, list sync, campaigns.
+  OTP, forms, abandoned cart, campaigns.
 
 ## Open questions (API side)
 
