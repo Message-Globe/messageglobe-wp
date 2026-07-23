@@ -7,6 +7,7 @@ namespace MessageGlobe\WP\Core;
 use MessageGlobe\WP\Admin\SettingsPage;
 use MessageGlobe\WP\Email\SmtpMailer;
 use MessageGlobe\WP\Sms\SmsService;
+use MessageGlobe\WP\Users\ContactSync;
 use MessageGlobe\WP\WooCommerce\OrderNotifications;
 
 defined('ABSPATH') || exit;
@@ -63,6 +64,7 @@ final class Plugin
             new SmtpMailer($this->settings, $this->logger),
             $this->sms,
             new OrderNotifications($this->sms, $this->settings),
+            new ContactSync($this->clients, $this->settings, $this->logger),
             new SettingsPage($this->settings, $this->clients, $this->logger, $this->sms),
         ];
 

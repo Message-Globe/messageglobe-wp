@@ -65,6 +65,12 @@ final class Settings
         'wc_status_refunded'        => false,
         'wc_tpl_refunded'           => 'A refund for order #{order_number} has been issued.',
 
+        // ── User → list sync ───────────────────────────────────────
+        'sync_enabled'      => false,
+        'sync_list_uid'     => '',          // Target MessageGlobe list (group) uid.
+        'sync_roles'        => [],          // Role slugs whose users are synced.
+        'sync_phone_meta'   => 'billing_phone', // User-meta key to read the phone from.
+
         // ── Logging ────────────────────────────────────────────────
         'logging_enabled'      => true,
     ];

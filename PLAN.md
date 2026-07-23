@@ -39,6 +39,7 @@ includes/
   Sms/   SmsService (send + async queue), TemplateTags
   Email/ SmtpMailer (phpmailer_init routing, test send)
   WooCommerce/ OrderNotifications (status SMS + admin alert)
+  Users/ ContactSync (role-filtered user → list sync, WP-Cron)
   Admin/ SettingsPage (tabbed UI, test buttons, log viewer)
 ```
 
@@ -49,15 +50,19 @@ includes/
 - WooCommerce: customer order-status SMS (per-status toggle + template), admin
   new-order alert.
 - Async SMS queue with retry/backoff.
-- Settings UI: Connection / SMS / Email / WooCommerce / Logs, with test buttons
-  and a sender-ID dropdown pulled live from the account.
+- User → list sync: add users (email + phone) to a chosen MessageGlobe list,
+  filtered by admin-selected roles, on registration / role change / profile
+  update. Queued via WP-Cron and idempotent per list.
+- Settings UI: Connection / SMS / Email / WooCommerce / Sync / Logs, with test
+  buttons and sender-ID + list dropdowns pulled live from the account.
 - Activity log.
 
 ### Fast-follow (v1.x / v2)
 - SMS OTP for login, registration, and WooCommerce checkout phone verification.
 - Form integrations (Contact Form 7, Gravity Forms, WPForms) → SMS + add contact
   to a MessageGlobe list.
-- List sync: WP users / customers → MessageGlobe groups on register/role change.
+- Two-way contact sync updates (reflect email/phone changes; remove on role
+  loss) and WooCommerce-customer-specific mapping.
 - Abandoned-cart SMS.
 - Inbound SMS + DLR status as WordPress actions (needs account-level webhooks —
   see Open questions).

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MessageGlobe\WP\Core;
 
 use MessageGlobe\WP\Sms\SmsService;
+use MessageGlobe\WP\Users\ContactSync;
 
 defined('ABSPATH') || exit;
 
@@ -25,8 +26,9 @@ final class Install
 
     public static function deactivate(): void
     {
-        // Clear the recurring queue processor; nothing else schedules events.
+        // Clear the plugin's scheduled events.
         wp_clear_scheduled_hook(SmsService::CRON_HOOK);
+        wp_clear_scheduled_hook(ContactSync::CRON_HOOK);
     }
 
     private static function create_tables(): void

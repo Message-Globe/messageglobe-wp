@@ -15,11 +15,16 @@ if (! defined('WP_UNINSTALL_PLUGIN')) {
 
 global $wpdb;
 
-// Clear the queue-processor cron event.
+// Clear scheduled cron events.
 wp_clear_scheduled_hook('messageglobe_process_sms_queue');
+wp_clear_scheduled_hook('messageglobe_sync_contact');
 
 // Drop settings.
 delete_option('messageglobe_settings');
+
+// Remove the per-user sync markers (bulk delete across all users).
+delete_metadata('user', 0, '_messageglobe_synced_list', '', true);
+delete_metadata('user', 0, '_messageglobe_contact_uid', '', true);
 
 // Drop custom tables (schema names mirror Logger::table() / SmsService::queue_table()).
 $tables = [

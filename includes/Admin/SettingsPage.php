@@ -14,7 +14,7 @@ defined('ABSPATH') || exit;
 
 /**
  * The wp-admin settings experience: a tabbed page (Connection, SMS, Email,
- * WooCommerce, Logs), server-side validation, and AJAX "send test" actions.
+ * WooCommerce, Sync, Logs), server-side validation, and AJAX "send test" actions.
  *
  * @see Plugin::run() for how this is instantiated.
  */
@@ -152,6 +152,12 @@ final class SettingsPage implements Module
                 'wc_admin_alert_recipients' => 'text',
                 'wc_customer_sms_enabled'   => 'bool',
             ],
+            'sync' => [
+                'sync_enabled'    => 'bool',
+                'sync_list_uid'   => 'text',
+                'sync_phone_meta' => 'text',
+                'sync_roles'      => 'roles',
+            ],
             'logs' => [
                 'logging_enabled' => 'bool',
             ],
@@ -255,6 +261,24 @@ final class SettingsPage implements Module
                     $values[$key] = in_array($enc, ['tls', 'ssl', 'none'], true) ? $enc : 'tls';
                     break;
 
+                case 'roles':
+                    // A list of role slugs. Keep only slugs that are real
+                    // WordPress roles; store [] when nothing is checked so
+                    // unchecking every role persists as an empty selection.
+                    $submitted = (isset($_POST[$key]) && is_array($_POST[$key]))
+                        ? (array) wp_unslash($_POST[$key])
+                        : [];
+                    $valid = array_keys(wp_roles()->get_names());
+                    $roles = [];
+                    foreach ($submitted as $role) {
+                        $slug = sanitize_key((string) $role);
+                        if ($slug !== '' && in_array($slug, $valid, true)) {
+                            $roles[] = $slug;
+                        }
+                    }
+                    $values[$key] = array_values(array_unique($roles));
+                    break;
+
                 case 'text':
                 default:
                     $values[$key] = isset($_POST[$key])
@@ -304,6 +328,7 @@ final class SettingsPage implements Module
             'sms'         => __('SMS', 'messageglobe'),
             'email'       => __('Email', 'messageglobe'),
             'woocommerce' => __('WooCommerce', 'messageglobe'),
+            'sync'        => __('Sync', 'messageglobe'),
             'logs'        => __('Logs', 'messageglobe'),
         ];
 
@@ -341,6 +366,9 @@ final class SettingsPage implements Module
                 break;
             case 'woocommerce':
                 $this->render_woocommerce_tab();
+                break;
+            case 'sync':
+                $this->render_sync_tab();
                 break;
             case 'logs':
                 $this->render_logs_tab();
@@ -675,6 +703,141 @@ final class SettingsPage implements Module
 
         submit_button();
         echo '</form>';
+    }
+
+    // ── Sync ─────────────────────────────────────────────────────────────
+
+    private function render_sync_tab(): void
+    {
+        $list_uid    = $this->settings->text('sync_list_uid');
+        $phone_meta  = $this->settings->text('sync_phone_meta');
+        $saved_roles = (array) $this->settings->get('sync_roles');
+
+        $this->open_form('sync');
+
+        echo '<p class="description">' . esc_html__('Matching WordPress users are added to the selected MessageGlobe list automatically on registration, role change, and profile update. Each user is added to the list only once.', 'messageglobe') . '</p>';
+
+        echo '<table class="form-table" role="presentation"><tbody>';
+
+        // Master toggle.
+        echo '<tr><th scope="row">' . esc_html__('User sync', 'messageglobe') . '</th><td>';
+        echo '<label><input type="checkbox" name="sync_enabled" value="1" ' . checked($this->settings->bool('sync_enabled'), true, false) . '> ';
+        echo esc_html__('Add matching WordPress users to a MessageGlobe list.', 'messageglobe') . '</label>';
+        echo '</td></tr>';
+
+        // Target list (group) uid.
+        echo '<tr><th scope="row"><label for="sync_list_uid">' . esc_html__('Target list', 'messageglobe') . '</label></th><td>';
+        $this->render_list_field($list_uid);
+        echo '</td></tr>';
+
+        // User roles.
+        echo '<tr><th scope="row">' . esc_html__('User roles', 'messageglobe') . '</th><td>';
+        $this->render_roles_field($saved_roles);
+        echo '</td></tr>';
+
+        // Phone meta key.
+        echo '<tr><th scope="row"><label for="sync_phone_meta">' . esc_html__('Phone meta key', 'messageglobe') . '</label></th><td>';
+        echo '<input type="text" name="sync_phone_meta" id="sync_phone_meta" class="regular-text" value="' . esc_attr($phone_meta) . '" placeholder="' . esc_attr('billing_phone') . '">';
+        echo '<p class="description">' . esc_html__('The user-meta key each contact\'s phone number is read from. WooCommerce stores it under billing_phone.', 'messageglobe') . '</p>';
+        echo '</td></tr>';
+
+        echo '</tbody></table>';
+        submit_button();
+        echo '</form>';
+    }
+
+    /**
+     * Render the target-list control: a select of the account's lists when the
+     * API is reachable, otherwise a plain text input for the list uid.
+     *
+     * {@see GroupsClient::all()} returns the raw decoded API `data` (an array of
+     * associative arrays, possibly with pagination metadata) rather than Group
+     * objects, so each row is read defensively and we fall back to a text input
+     * whenever options cannot be confidently extracted.
+     */
+    private function render_list_field(string $current): void
+    {
+        if ($this->clients->is_ready()) {
+            $client = $this->clients->groups();
+            if ($client !== null) {
+                try {
+                    $lists = $client->all();
+
+                    $options = [];
+                    foreach ($lists as $row) {
+                        if (! is_array($row)) {
+                            continue;
+                        }
+
+                        $uid = '';
+                        if (isset($row['uid']) && is_scalar($row['uid'])) {
+                            $uid = (string) $row['uid'];
+                        } elseif (isset($row['id']) && is_scalar($row['id'])) {
+                            $uid = (string) $row['id'];
+                        }
+                        if ($uid === '') {
+                            continue;
+                        }
+
+                        $name = (isset($row['name']) && is_scalar($row['name']) && (string) $row['name'] !== '')
+                            ? (string) $row['name']
+                            : $uid;
+
+                        $options[$uid] = $name;
+                    }
+
+                    // Only render a select if we could confidently extract options.
+                    if (! empty($options)) {
+                        // Keep the saved uid selectable even if the API omits it.
+                        if ($current !== '' && ! isset($options[$current])) {
+                            $options[$current] = $current;
+                        }
+
+                        echo '<select name="sync_list_uid" id="sync_list_uid">';
+                        echo '<option value="">' . esc_html__('— Select a list —', 'messageglobe') . '</option>';
+                        foreach ($options as $value => $label) {
+                            echo '<option value="' . esc_attr($value) . '" ' . selected($current, $value, false) . '>' . esc_html($label) . '</option>';
+                        }
+                        echo '</select>';
+                        echo '<p class="description">' . esc_html__('The MessageGlobe list (group) that synced users are added to.', 'messageglobe') . '</p>';
+
+                        return;
+                    }
+                } catch (\Throwable $e) {
+                    // Fall through to a text input below.
+                    echo '<p class="description">' . esc_html__('Could not load lists from the API; enter the list uid manually.', 'messageglobe') . '</p>';
+                }
+            }
+        }
+
+        echo '<input type="text" name="sync_list_uid" id="sync_list_uid" class="regular-text" value="' . esc_attr($current) . '">';
+        echo '<p class="description">' . esc_html__('The uid of the MessageGlobe list (group) that synced users are added to.', 'messageglobe') . '</p>';
+    }
+
+    /**
+     * Render one checkbox per WordPress role, checked when its slug is in the
+     * saved sync_roles selection.
+     *
+     * @param array<int|string, mixed> $saved Saved role slugs.
+     */
+    private function render_roles_field(array $saved): void
+    {
+        $roles = wp_roles()->get_names();
+
+        if (empty($roles)) {
+            echo '<p class="description">' . esc_html__('No user roles are available.', 'messageglobe') . '</p>';
+
+            return;
+        }
+
+        echo '<fieldset>';
+        foreach ($roles as $slug => $name) {
+            $slug = (string) $slug;
+            echo '<label style="display:block;"><input type="checkbox" name="sync_roles[]" value="' . esc_attr($slug) . '" ' . checked(in_array($slug, $saved, true), true, false) . '> ';
+            echo esc_html(translate_user_role((string) $name)) . '</label>';
+        }
+        echo '</fieldset>';
+        echo '<p class="description">' . esc_html__('Only users who have at least one checked role are synced to the list.', 'messageglobe') . '</p>';
     }
 
     // ── Logs ─────────────────────────────────────────────────────────────
