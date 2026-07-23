@@ -1,0 +1,7 @@
+# Composer dependencies are restored with `composer install` and, for the
+# distributable ZIP, scoped with PHP-Scoper at build time (see PLAN.md).
+/vendor/
+
+# OS / editor noise
+.DS_Store
+*.log

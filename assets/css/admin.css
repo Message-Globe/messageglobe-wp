@@ -1,0 +1,21 @@
+/* MessageGlobe admin settings. */
+
+.messageglobe-settings .messageglobe-test-result {
+	display: none;
+	margin: 12px 0 0;
+	padding: 8px 12px;
+	max-width: 40em;
+}
+
+.messageglobe-settings .messageglobe-test-result p {
+	margin: 0.4em 0;
+}
+
+.messageglobe-settings hr {
+	margin: 24px 0;
+	max-width: 60em;
+}
+
+.messageglobe-settings code {
+	white-space: nowrap;
+}

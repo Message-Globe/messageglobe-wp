@@ -1,0 +1,23 @@
+{
+    "name": "message-globe/messageglobe-wp",
+    "description": "Official MessageGlobe plugin for WordPress & WooCommerce — SMS notifications and SMTP email deliverability.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "homepage": "https://www.messageglobe.com/integrazioni/wordpress",
+    "authors": [
+        { "name": "MessageGlobe", "homepage": "https://messageglobe.com" }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "messageglobe/sdk": "^1.0"
+    },
+    "autoload": {
+        "psr-4": { "MessageGlobe\\WP\\": "includes/" }
+    },
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
