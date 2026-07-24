@@ -4,7 +4,7 @@ Tags: sms, smtp, email, woocommerce, notifications
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -51,6 +51,10 @@ Yes. SMTP email routing and SMS work on any WordPress site; the WooCommerce feat
 In a WordPress option, or — more securely — in the `MESSAGEGLOBE_API_TOKEN` constant in `wp-config.php`, which is never written to the database.
 
 == Changelog ==
+
+= 1.0.1 =
+* Updated the plugin description to include the user → list sync feature.
+* Added a bilingual (English/Italian) README and automated release packaging. No functional changes.
 
 = 1.0.0 =
 * Initial release: SMTP email routing, WooCommerce order/admin SMS, user → list sync, async queue, settings UI, activity log.
