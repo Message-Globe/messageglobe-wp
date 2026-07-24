@@ -1,6 +1,6 @@
 {
     "name": "message-globe/messageglobe-wordpress",
-    "description": "Official MessageGlobe plugin for WordPress & WooCommerce — SMS notifications and SMTP email deliverability.",
+    "description": "Official MessageGlobe plugin for WordPress & WooCommerce — SMS notifications, user-to-list sync and SMTP email deliverability.",
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
     "homepage": "https://www.messageglobe.com/integrazioni/wordpress",

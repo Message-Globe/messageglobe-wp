@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       MessageGlobe for WordPress
  * Plugin URI:        https://www.messageglobe.com/integrazioni/wordpress
- * Description:       Send SMS notifications and route WordPress email through MessageGlobe for reliable delivery. Integrates with WooCommerce.
+ * Description:       Send SMS notifications, sync users to MessageGlobe lists, and route WordPress email through MessageGlobe. Integrates with WooCommerce.
  * Version:           1.0.0
  * Requires at least: 5.8
  * Requires PHP:      7.4

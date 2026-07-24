@@ -8,14 +8,15 @@ Stable tag: 1.0.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Send SMS notifications and route WordPress email through MessageGlobe for reliable delivery. Integrates with WooCommerce.
+Send SMS notifications, sync users to MessageGlobe lists, and route WordPress email through MessageGlobe. Integrates with WooCommerce.
 
 == Description ==
 
-MessageGlobe for WordPress connects your site to the [MessageGlobe](https://messageglobe.com) messaging platform. It does two jobs:
+MessageGlobe for WordPress connects your site to the [MessageGlobe](https://messageglobe.com) messaging platform:
 
 * **Reliable email** — route every `wp_mail()` (password resets, WooCommerce receipts, form notifications) through MessageGlobe SMTP for better deliverability.
 * **SMS notifications** — text customers and staff on the events that matter, with a built-in WooCommerce integration.
+* **Contact sync** — add your users (email + phone) to a MessageGlobe list, filtered by the roles you choose.
 
 A single API token from the [developers dashboard](https://dashboard.messageglobe.com/developers) powers everything. The plugin is built on the official MessageGlobe PHP SDK.
 
@@ -26,6 +27,7 @@ A single API token from the [developers dashboard](https://dashboard.messageglob
 * WooCommerce new-order SMS alert for store staff.
 * Asynchronous SMS queue with retries — checkout and registration never wait on the network.
 * Sender ID picker populated live from your account, and HQ/LQ gateway choice.
+* Sync WordPress users into a MessageGlobe list (email + phone), filtered by selected roles, on registration, role change and profile update — queued and idempotent.
 * Activity log and one-click test buttons for SMS, email and the API connection.
 * Translation-ready; API responses follow the site language (English/Italian).
 
@@ -51,4 +53,4 @@ In a WordPress option, or — more securely — in the `MESSAGEGLOBE_API_TOKEN` 
 == Changelog ==
 
 = 1.0.0 =
-* Initial release: SMTP email routing, WooCommerce order/admin SMS, async queue, settings UI, activity log.
+* Initial release: SMTP email routing, WooCommerce order/admin SMS, user → list sync, async queue, settings UI, activity log.
