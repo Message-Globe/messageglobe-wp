@@ -57,9 +57,9 @@ così checkout e registrazione non aspettano mai la rete.
 | **Email SMTP** | Instrada ogni `wp_mail()` attraverso MessageGlobe SMTP (preset a un clic o il tuo server). | — |
 | **Notifiche SMS** | Avvisa clienti e staff sugli eventi del sito, con sender ID personalizzato e gateway HQ/LQ. | — |
 | **SMS ordini WooCommerce** | Avvisa i clienti al cambio di stato dell'ordine (template per stato) e lo staff sui nuovi ordini. | WooCommerce |
-| **Sincronizzazione utenti → lista** | Aggiunge gli utenti (email + telefono) a una lista MessageGlobe, filtrando per i ruoli scelti. | — |
+| **Sincronizzazione utenti → lista** | Aggiunge gli utenti (email + telefono) a una lista MessageGlobe, filtrando per ruoli — agli eventi utente o **in blocco** per gli utenti esistenti, con barra di avanzamento. | — |
 | **Coda asincrona** | Gli invii sono messi in coda via WP-Cron con retry: checkout e registrazione non aspettano l'API. | — |
-| **Impostazioni e log** | Interfaccia a schede con selettori live di sender ID/lista, pulsanti di test e registro attività. | — |
+| **Impostazioni e log** | Interfaccia a schede con selettori live, pulsanti di test (SMS, email, API e **connessione SMTP**), registro attività e vista **esecuzioni in background**. | — |
 
 ## Requisiti
 
@@ -108,8 +108,9 @@ define( 'MESSAGEGLOBE_API_TOKEN', 'XX|il-tuo-api-token' );
 Attiva **Email** nelle impostazioni per instradare ogni `wp_mail()` attraverso MessageGlobe. Il
 plugin configura il mailer di WordPress tramite l'hook `phpmailer_init` — non carica mai una seconda
 libreria email — e può usare il **preset MessageGlobe** (host, porta e l'API token come password
-SMTP) oppure il tuo server SMTP con cifratura TLS/SSL/nessuna. Un pulsante **Invia email di test**
-conferma la consegna e gli errori vengono registrati nel log attività.
+SMTP) oppure il tuo server SMTP con cifratura TLS/SSL/nessuna. Un pulsante **Test connessione** si
+collega e si autentica senza inviare, un pulsante **Invia email di test** conferma la consegna
+end-to-end e gli errori vengono registrati nel log attività.
 
 ## Notifiche SMS
 
@@ -158,13 +159,17 @@ all'**aggiornamento del profilo**.
   `billing_phone` (dove lo salva WooCommerce).
 - Ogni sincronizzazione è messa in coda via WP-Cron ed è **idempotente per lista**: un utente viene
   aggiunto una sola volta, non a ogni salvataggio del profilo.
+- **Sincronizza subito tutti gli utenti esistenti** — un'azione in blocco con un clic nella scheda
+  Sync aggiunge alla lista ogni utente nel raggio d'azione con una barra di avanzamento, saltando
+  chi è già sincronizzato.
 
 ## Impostazioni e log
 
 È tutto sotto un'unica pagina **MessageGlobe** con schede per **Connessione, SMS, Email,
 WooCommerce, Sync** e **Log**. Ogni scheda di messaggistica ha un pulsante di test e la scheda Log
 mostra l'attività recente di SMS/email/sync con gli stati, così vedi esattamente cosa è stato
-inviato e perché qualcosa è fallito.
+inviato e perché qualcosa è fallito. Una tabella separata **Esecuzioni in background recenti**
+riassume ogni svuotamento della coda SMS asincrona (elaborati / inviati / falliti / rimanenti).
 
 ## Sicurezza e privacy
 

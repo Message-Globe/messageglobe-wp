@@ -56,9 +56,9 @@ registration flows never block on the network.
 | **SMTP email** | Route all `wp_mail()` through MessageGlobe SMTP (one-click preset or your own host). | — |
 | **SMS notifications** | Alert customers and staff on site events, with a custom sender ID and HQ/LQ gateway. | — |
 | **WooCommerce order SMS** | Text customers on order-status changes (per-status templates) and alert staff on new orders. | WooCommerce |
-| **User → list sync** | Add users (email + phone) to a MessageGlobe list, filtered by the roles you choose. | — |
+| **User → list sync** | Add users (email + phone) to a MessageGlobe list, filtered by roles — on user events or **in bulk** for existing users, with a progress bar. | — |
 | **Async queue** | Sends are queued on WP-Cron with retries — checkout and registration never wait on the API. | — |
-| **Settings & logs** | Tabbed admin UI with live sender-ID/list pickers, one-click test buttons and an activity log. | — |
+| **Settings & logs** | Tabbed admin UI with live pickers, one-click test buttons (SMS, email, API and **SMTP connection**), an activity log and a **background-runs** view. | — |
 
 ## Requirements
 
@@ -107,8 +107,9 @@ define( 'MESSAGEGLOBE_API_TOKEN', 'XX|your-api-token' );
 Enable **Email** in settings to route every `wp_mail()` through MessageGlobe. The plugin configures
 WordPress' own mailer via the `phpmailer_init` hook — it never loads a second mail library — and can
 either use the **MessageGlobe preset** (host, port and the API token as the SMTP password) or your
-own SMTP host with TLS/SSL/none encryption. A **Send test email** button confirms delivery, and
-failures are recorded in the activity log.
+own SMTP host with TLS/SSL/none encryption. A **Test connection** button connects and authenticates
+without sending, a **Send test email** button confirms end-to-end delivery, and failures are recorded
+in the activity log.
 
 ## SMS notifications
 
@@ -153,13 +154,16 @@ on **registration**, **role change**, and **profile update**.
   WooCommerce stores it).
 - Every sync is queued on WP-Cron and is **idempotent per list**: a user is added once, not on every
   profile save.
+- **Sync all existing users now** — a one-click bulk action on the Sync tab adds every in-scope user
+  to the list with a live progress bar, skipping anyone already synced.
 
 ## Settings & logs
 
 Everything lives under one **MessageGlobe** admin page with tabs for **Connection, SMS, Email,
 WooCommerce, Sync** and **Logs**. Each messaging tab has a one-click test button, and the Logs tab
 shows recent SMS/email/sync activity with statuses so you can see exactly what was sent and why
-anything failed.
+anything failed. A separate **Recent background runs** table summarises each async SMS-queue drain
+(processed / sent / failed / remaining).
 
 ## Security & privacy
 
