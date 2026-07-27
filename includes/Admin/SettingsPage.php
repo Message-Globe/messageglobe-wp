@@ -8,7 +8,9 @@ use MessageGlobe\WP\Core\ClientFactory;
 use MessageGlobe\WP\Core\Logger;
 use MessageGlobe\WP\Core\Module;
 use MessageGlobe\WP\Core\Settings;
+use MessageGlobe\WP\Email\SmtpMailer;
 use MessageGlobe\WP\Sms\SmsService;
+use MessageGlobe\WP\Users\ContactSync;
 
 defined('ABSPATH') || exit;
 
@@ -38,15 +40,21 @@ final class SettingsPage implements Module
 
     private SmsService $sms;
 
+    private ContactSync $sync;
+
+    private SmtpMailer $smtp;
+
     /** The screen id returned by add_menu_page(), used to scope asset loading. */
     private string $hook_suffix = '';
 
-    public function __construct(Settings $settings, ClientFactory $clients, Logger $logger, SmsService $sms)
+    public function __construct(Settings $settings, ClientFactory $clients, Logger $logger, SmsService $sms, ContactSync $sync, SmtpMailer $smtp)
     {
         $this->settings = $settings;
         $this->clients  = $clients;
         $this->logger   = $logger;
         $this->sms      = $sms;
+        $this->sync     = $sync;
+        $this->smtp     = $smtp;
     }
 
     public function register(): void
@@ -58,6 +66,9 @@ final class SettingsPage implements Module
         add_action('wp_ajax_messageglobe_test_sms', [$this, 'ajax_test_sms']);
         add_action('wp_ajax_messageglobe_test_email', [$this, 'ajax_test_email']);
         add_action('wp_ajax_messageglobe_test_connection', [$this, 'ajax_test_connection']);
+        add_action('wp_ajax_messageglobe_test_smtp', [$this, 'ajax_test_smtp']);
+        add_action('wp_ajax_messageglobe_sync_total', [$this, 'ajax_sync_total']);
+        add_action('wp_ajax_messageglobe_sync_batch', [$this, 'ajax_sync_batch']);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -106,9 +117,15 @@ final class SettingsPage implements Module
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce(self::AJAX_NONCE),
             'i18n'    => [
-                'testing' => __('Testing…', 'messageglobe'),
-                'sending' => __('Sending…', 'messageglobe'),
-                'error'   => __('Request failed. Please try again.', 'messageglobe'),
+                'testing'   => __('Testing…', 'messageglobe'),
+                'sending'   => __('Sending…', 'messageglobe'),
+                'error'     => __('Request failed. Please try again.', 'messageglobe'),
+                'syncing'   => __('Syncing…', 'messageglobe'),
+                'syncDone'  => __('Sync complete.', 'messageglobe'),
+                'processed' => __('Processed', 'messageglobe'),
+                'synced'    => __('Synced', 'messageglobe'),
+                'skipped'   => __('Skipped', 'messageglobe'),
+                'failed'    => __('Failed', 'messageglobe'),
             ],
         ]);
     }
@@ -630,6 +647,13 @@ final class SettingsPage implements Module
         submit_button();
         echo '</form>';
 
+        // Test SMTP connection (AJAX) — connects & authenticates without sending.
+        echo '<hr>';
+        echo '<h3>' . esc_html__('Test connection', 'messageglobe') . '</h3>';
+        echo '<p class="description">' . esc_html__('Connect and authenticate with the SMTP server using the saved settings, without sending an email. Save your settings first.', 'messageglobe') . '</p>';
+        echo '<p><button type="button" class="button" id="messageglobe-test-smtp">' . esc_html__('Test connection', 'messageglobe') . '</button></p>';
+        echo '<div id="messageglobe-smtp-result" class="messageglobe-test-result" style="display:none;"></div>';
+
         // Send test email (AJAX).
         echo '<hr>';
         echo '<h3>' . esc_html__('Send test email', 'messageglobe') . '</h3>';
@@ -744,6 +768,14 @@ final class SettingsPage implements Module
         echo '</tbody></table>';
         submit_button();
         echo '</form>';
+
+        // Bulk-sync existing users (AJAX, with a progress bar).
+        echo '<hr>';
+        echo '<h3>' . esc_html__('Sync existing users', 'messageglobe') . '</h3>';
+        echo '<p class="description">' . esc_html__('Add every existing user that matches the selected roles to the list now. Users already in the list are skipped. Save your sync settings first.', 'messageglobe') . '</p>';
+        echo '<p><button type="button" class="button button-primary" id="messageglobe-sync-all">' . esc_html__('Sync all users now', 'messageglobe') . '</button></p>';
+        echo '<div class="messageglobe-progress" id="messageglobe-sync-progress-wrap" style="display:none;"><div class="messageglobe-progress-bar" id="messageglobe-sync-progress">0%</div></div>';
+        echo '<div id="messageglobe-sync-result" class="messageglobe-test-result" style="display:none;"></div>';
     }
 
     /**
@@ -859,7 +891,8 @@ final class SettingsPage implements Module
         echo '<hr>';
         echo '<h3>' . esc_html__('Recent activity', 'messageglobe') . '</h3>';
 
-        $rows = $this->logger->recent(100);
+        // Exclude the cron channel here; it has its own table below.
+        $rows = $this->logger->recent(100, Logger::CHANNEL_CRON, true);
 
         echo '<table class="widefat striped">';
         echo '<thead><tr>';
@@ -879,6 +912,33 @@ final class SettingsPage implements Module
                 echo '<td>' . esc_html((string) ($row['channel'] ?? '')) . '</td>';
                 echo '<td>' . esc_html((string) ($row['status'] ?? '')) . '</td>';
                 echo '<td>' . esc_html((string) ($row['recipient'] ?? '')) . '</td>';
+                echo '<td>' . esc_html((string) ($row['message'] ?? '')) . '</td>';
+                echo '</tr>';
+            }
+        }
+
+        echo '</tbody></table>';
+
+        // Recent background runs (cron channel): async SMS-queue drains.
+        echo '<h3>' . esc_html__('Recent background runs', 'messageglobe') . '</h3>';
+        echo '<p class="description">' . esc_html__('Summaries of the asynchronous SMS queue as it is drained by WP-Cron.', 'messageglobe') . '</p>';
+
+        $cron_rows = $this->logger->recent(50, Logger::CHANNEL_CRON);
+
+        echo '<table class="widefat striped">';
+        echo '<thead><tr>';
+        echo '<th>' . esc_html__('Date', 'messageglobe') . '</th>';
+        echo '<th>' . esc_html__('Status', 'messageglobe') . '</th>';
+        echo '<th>' . esc_html__('Details', 'messageglobe') . '</th>';
+        echo '</tr></thead><tbody>';
+
+        if (empty($cron_rows)) {
+            echo '<tr><td colspan="3">' . esc_html__('No background runs recorded yet.', 'messageglobe') . '</td></tr>';
+        } else {
+            foreach ($cron_rows as $row) {
+                echo '<tr>';
+                echo '<td>' . esc_html((string) ($row['created_at'] ?? '')) . '</td>';
+                echo '<td>' . esc_html((string) ($row['status'] ?? '')) . '</td>';
                 echo '<td>' . esc_html((string) ($row['message'] ?? '')) . '</td>';
                 echo '</tr>';
             }
@@ -1034,5 +1094,65 @@ final class SettingsPage implements Module
         wp_send_json_error([
             'message' => $message,
         ]);
+    }
+
+    /**
+     * Connect + authenticate to the SMTP server without sending an email.
+     */
+    public function ajax_test_smtp(): void
+    {
+        $this->verify_ajax();
+
+        $result = $this->smtp->test_connection();
+
+        if (! empty($result['success'])) {
+            wp_send_json_success(['message' => $result['message']]);
+        }
+
+        wp_send_json_error(['message' => $result['message']]);
+    }
+
+    /**
+     * Return the number of in-scope users to sync (drives the progress bar).
+     */
+    public function ajax_sync_total(): void
+    {
+        $this->verify_ajax();
+
+        if (! $this->sync->can_bulk_sync()) {
+            wp_send_json_error([
+                'message' => __('Add and save your API token and a target list first.', 'messageglobe'),
+            ]);
+        }
+
+        $total = $this->sync->count_scope();
+        if ($total === 0) {
+            wp_send_json_error([
+                'message' => __('No users match the selected roles. Choose at least one role in the sync settings and save.', 'messageglobe'),
+            ]);
+        }
+
+        wp_send_json_success(['total' => $total]);
+    }
+
+    /**
+     * Sync one page of users and return per-batch counts.
+     */
+    public function ajax_sync_batch(): void
+    {
+        $this->verify_ajax();
+
+        if (! $this->sync->can_bulk_sync()) {
+            wp_send_json_error([
+                'message' => __('Add and save your API token and a target list first.', 'messageglobe'),
+            ]);
+        }
+
+        $offset = isset($_POST['offset']) ? max(0, (int) $_POST['offset']) : 0;
+        $limit  = isset($_POST['limit']) ? (int) $_POST['limit'] : 20;
+
+        $stats = $this->sync->sync_batch($offset, max(1, min(100, $limit)));
+
+        wp_send_json_success($stats);
     }
 }

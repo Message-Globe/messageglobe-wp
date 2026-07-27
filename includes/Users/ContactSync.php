@@ -9,6 +9,7 @@ use MessageGlobe\WP\Core\Logger;
 use MessageGlobe\WP\Core\Module;
 use MessageGlobe\WP\Core\Settings;
 use MessageGlobe\Contacts\ContactRequest;
+use MessageGlobe\Exception\ValidationException;
 
 defined('ABSPATH') || exit;
 
@@ -100,16 +101,26 @@ final class ContactSync implements Module
             return;
         }
 
+        $this->push_user_to_list($user_id);
+    }
+
+    /**
+     * Push one user to the configured list and return a status string:
+     * 'synced', 'skipped' (already in the list), 'no_identifier' (no email or
+     * phone) or 'failed'. Scope is the caller's responsibility.
+     */
+    private function push_user_to_list(int $user_id): string
+    {
         $list = $this->settings->text('sync_list_uid');
 
-        // Re-check the idempotency flag inside the worker (state may have moved).
+        // Idempotent per list: a user is added once, not on every save.
         if ((string) get_user_meta($user_id, self::SYNCED_META, true) === $list) {
-            return;
+            return 'skipped';
         }
 
         $user = get_userdata($user_id);
         if (! $user) {
-            return;
+            return 'failed';
         }
 
         $email = sanitize_email((string) $user->user_email);
@@ -117,20 +128,30 @@ final class ContactSync implements Module
 
         // The API needs at least one identifier.
         if ($email === '' && $phone === '') {
-            return;
+            return 'no_identifier';
         }
 
         $client = $this->clients->contacts();
         if ($client === null) {
-            return;
+            return 'failed';
         }
 
+        // Guard each identifier independently so one malformed value never blocks
+        // the other (the SDK validates phone/email client-side).
         $request = new ContactRequest();
         if ($phone !== '') {
-            $request->phone($phone);
+            try {
+                $request->phone($phone);
+            } catch (ValidationException $e) {
+                // Skip an invalid phone; fall back to email-only when possible.
+            }
         }
         if ($email !== '') {
-            $request->email($email);
+            try {
+                $request->email($email);
+            } catch (ValidationException $e) {
+                // Skip an invalid email.
+            }
         }
 
         $first = (string) get_user_meta($user_id, 'first_name', true);
@@ -153,9 +174,97 @@ final class ContactSync implements Module
                 __('Synced to list %s', 'messageglobe'),
                 $list
             ), ['contact_uid' => $contact->uid(), 'user_id' => $user_id]);
+
+            return 'synced';
         } catch (\Throwable $e) {
             $this->logger->log('contact', Logger::STATUS_FAILED, $email !== '' ? $email : $phone, $e->getMessage(), ['user_id' => $user_id]);
+
+            return 'failed';
         }
+    }
+
+    /**
+     * True when a bulk sync can run: the SDK is reachable and a target list is
+     * set. Unlike the automatic sync this does NOT require the "sync_enabled"
+     * toggle, because it is an explicit admin action.
+     */
+    public function can_bulk_sync(): bool
+    {
+        return $this->clients->is_ready() && $this->settings->text('sync_list_uid') !== '';
+    }
+
+    /**
+     * Number of users in sync scope (holding one of the configured roles).
+     */
+    public function count_scope(): int
+    {
+        $roles = array_map('strval', (array) $this->settings->get('sync_roles', []));
+        if (empty($roles)) {
+            return 0;
+        }
+
+        $query = new \WP_User_Query([
+            'role__in'    => $roles,
+            'fields'      => 'ID',
+            'number'      => 1,
+            'count_total' => true,
+        ]);
+
+        return (int) $query->get_total();
+    }
+
+    /**
+     * Sync one page of in-scope users to the list. Pages over a stable,
+     * role-filtered set ordered by ID, so offset-based batching stays consistent
+     * across calls (already-synced users are skipped, not removed from the set).
+     *
+     * @return array{processed:int, synced:int, skipped:int, failed:int}
+     */
+    public function sync_batch(int $offset, int $limit): array
+    {
+        $result = ['processed' => 0, 'synced' => 0, 'skipped' => 0, 'failed' => 0];
+
+        if (! $this->can_bulk_sync()) {
+            return $result;
+        }
+
+        $roles = array_map('strval', (array) $this->settings->get('sync_roles', []));
+        if (empty($roles)) {
+            return $result;
+        }
+
+        $query = new \WP_User_Query([
+            'role__in'    => $roles,
+            'fields'      => 'ID',
+            'number'      => max(1, min(100, $limit)),
+            'offset'      => max(0, $offset),
+            'orderby'     => 'ID',
+            'order'       => 'ASC',
+            'count_total' => false,
+        ]);
+
+        $ids = $query->get_results();
+        if (! is_array($ids)) {
+            return $result;
+        }
+
+        foreach ($ids as $id) {
+            $result['processed']++;
+
+            switch ($this->push_user_to_list((int) $id)) {
+                case 'synced':
+                    $result['synced']++;
+                    break;
+                case 'failed':
+                    $result['failed']++;
+                    break;
+                default: // 'skipped' | 'no_identifier'
+                    $result['skipped']++;
+                    break;
+            }
+        }
+
+        return $result;
     }
 
     private function is_ready(): bool

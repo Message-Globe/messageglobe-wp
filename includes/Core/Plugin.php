@@ -59,13 +59,16 @@ final class Plugin
 
         load_plugin_textdomain('messageglobe', false, dirname(MESSAGEGLOBE_WP_BASENAME) . '/languages');
 
+        $smtp = new SmtpMailer($this->settings, $this->logger);
+        $sync = new ContactSync($this->clients, $this->settings, $this->logger);
+
         /** @var Module[] $modules */
         $modules = [
-            new SmtpMailer($this->settings, $this->logger),
+            $smtp,
             $this->sms,
             new OrderNotifications($this->sms, $this->settings),
-            new ContactSync($this->clients, $this->settings, $this->logger),
-            new SettingsPage($this->settings, $this->clients, $this->logger, $this->sms),
+            $sync,
+            new SettingsPage($this->settings, $this->clients, $this->logger, $this->sms, $sync, $smtp),
         ];
 
         foreach ($modules as $module) {

@@ -127,12 +127,16 @@ final class SmsService implements Module
             return;
         }
 
+        $sent    = 0;
+        $errored = 0;
+
         foreach ($rows as $row) {
             /** @var array<string, mixed> $args */
             $args = json_decode((string) $row['payload'], true) ?: [];
 
             try {
                 $this->send($args);
+                $sent++;
                 $wpdb->update(
                     $table,
                     ['status' => 'sent', 'attempts' => (int) $row['attempts'] + 1, 'sent_at' => current_time('mysql'), 'error' => null],
@@ -141,6 +145,7 @@ final class SmsService implements Module
                     ['%d']
                 );
             } catch (\Throwable $e) {
+                $errored++;
                 $attempts = (int) $row['attempts'] + 1;
                 $failed   = $attempts >= self::MAX_ATTEMPTS;
 
@@ -167,6 +172,21 @@ final class SmsService implements Module
         $remaining = (int) $wpdb->get_var(
             $wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE status = %s", 'pending')
         );
+
+        // Record a run summary for the background-runs log.
+        $this->logger->cron(
+            Logger::STATUS_RAN,
+            sprintf(
+                /* translators: 1: processed, 2: sent, 3: failed, 4: remaining. */
+                __('SMS queue drained: %1$d processed, %2$d sent, %3$d failed, %4$d remaining.', 'messageglobe'),
+                count($rows),
+                $sent,
+                $errored,
+                $remaining
+            ),
+            ['processed' => count($rows), 'sent' => $sent, 'failed' => $errored, 'remaining' => $remaining]
+        );
+
         if ($remaining > 0 && ! wp_next_scheduled(self::CRON_HOOK)) {
             wp_schedule_single_event(time() + 30, self::CRON_HOOK);
         }

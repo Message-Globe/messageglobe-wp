@@ -200,6 +200,113 @@ final class SmtpMailer implements Module
     }
 
     /**
+     * Open an SMTP connection and authenticate using the saved settings WITHOUT
+     * sending an email, so admins can validate the host and credentials before
+     * enabling routing. Uses WordPress core's bundled PHPMailer SMTP class — it
+     * never loads a second mail library.
+     *
+     * @return array{success: bool, message: string}
+     */
+    public function test_connection(): array
+    {
+        if ($this->settings->bool('smtp_use_preset')) {
+            $host     = self::PRESET_HOST;
+            $port     = self::PRESET_PORT;
+            $secure   = self::PRESET_SECURE; // 'ssl'
+            $username = $this->settings->text('smtp_username');
+            $password = $this->settings->text('api_token');
+            $auth     = true;
+        } else {
+            $host       = $this->settings->text('smtp_host');
+            $port       = $this->settings->int('smtp_port');
+            $encryption = $this->settings->text('smtp_encryption');
+            $secure     = ($encryption === 'tls' || $encryption === 'ssl') ? $encryption : '';
+            $username   = $this->settings->text('smtp_username');
+            $password   = $this->settings->text('smtp_password');
+            $auth       = $username !== '' && $encryption !== 'none';
+        }
+
+        if ($host === '' || $port <= 0) {
+            return ['success' => false, 'message' => esc_html__('Set the SMTP host and port first.', 'messageglobe')];
+        }
+        if ($auth && ($username === '' || $password === '')) {
+            return ['success' => false, 'message' => esc_html__('Set the SMTP username and password first, then save.', 'messageglobe')];
+        }
+
+        // Load core's PHPMailer SMTP transport on demand.
+        if (! class_exists(\PHPMailer\PHPMailer\SMTP::class)) {
+            $smtpFile = ABSPATH . WPINC . '/PHPMailer/SMTP.php';
+            if (! is_readable($smtpFile)) {
+                return ['success' => false, 'message' => esc_html__('The SMTP library is unavailable on this site.', 'messageglobe')];
+            }
+            require_once ABSPATH . WPINC . '/PHPMailer/Exception.php';
+            require_once $smtpFile;
+        }
+
+        $smtp = new \PHPMailer\PHPMailer\SMTP();
+        $smtp->Timeout = 10;
+
+        // Implicit TLS (SMTPS) connects over an ssl:// stream; STARTTLS upgrades
+        // a plain connection after the first greeting.
+        $connectHost = ($secure === 'ssl') ? 'ssl://' . $host : $host;
+        $ehlo        = $this->ehloHost();
+
+        try {
+            if (! $smtp->connect($connectHost, $port, 10)) {
+                return ['success' => false, 'message' => $this->smtpError($smtp, __('Could not connect to the SMTP server.', 'messageglobe'))];
+            }
+            if (! $smtp->hello($ehlo)) {
+                return ['success' => false, 'message' => $this->smtpError($smtp, __('The SMTP server rejected the greeting.', 'messageglobe'))];
+            }
+            if ($secure === 'tls') {
+                if (! $smtp->startTLS()) {
+                    return ['success' => false, 'message' => $this->smtpError($smtp, __('Could not start TLS encryption.', 'messageglobe'))];
+                }
+                if (! $smtp->hello($ehlo)) {
+                    return ['success' => false, 'message' => $this->smtpError($smtp, __('The SMTP server rejected the greeting after STARTTLS.', 'messageglobe'))];
+                }
+            }
+            if ($auth && ! $smtp->authenticate($username, $password)) {
+                return ['success' => false, 'message' => $this->smtpError($smtp, __('Authentication failed. Check the username and password.', 'messageglobe'))];
+            }
+
+            $smtp->quit();
+
+            return ['success' => true, 'message' => esc_html__('Connected and authenticated with the SMTP server.', 'messageglobe')];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => esc_html($e->getMessage())];
+        } finally {
+            $smtp->close();
+        }
+    }
+
+    /**
+     * Hostname to present in EHLO/HELO — the site host, or "localhost".
+     */
+    private function ehloHost(): string
+    {
+        $host = wp_parse_url((string) home_url(), PHP_URL_HOST);
+
+        return (is_string($host) && $host !== '') ? $host : 'localhost';
+    }
+
+    /**
+     * Compose a readable message from PHPMailer's last SMTP error.
+     *
+     * @param \PHPMailer\PHPMailer\SMTP $smtp
+     */
+    private function smtpError($smtp, string $fallback): string
+    {
+        $error  = $smtp->getError();
+        $detail = '';
+        if (is_array($error)) {
+            $detail = trim((string) ($error['error'] ?? '') . ' ' . (string) ($error['detail'] ?? ''));
+        }
+
+        return esc_html($detail !== '' ? $fallback . ' ' . $detail : $fallback);
+    }
+
+    /**
      * Configure PHPMailer for MessageGlobe's hosted SMTP preset: the API token
      * doubles as the SMTP password.
      *

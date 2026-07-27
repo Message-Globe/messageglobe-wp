@@ -129,6 +129,92 @@
 			} );
 		}
 
+		// Test SMTP connection (connect + authenticate, no email sent).
+		var smtpBtn = document.getElementById( 'messageglobe-test-smtp' );
+		if ( smtpBtn ) {
+			smtpBtn.addEventListener( 'click', function () {
+				var result = document.getElementById( 'messageglobe-smtp-result' );
+				busy( smtpBtn, i18n.testing || 'Testing…' );
+				post( 'messageglobe_test_smtp', {}, function ( json ) {
+					ready( smtpBtn );
+					var data = json.data || {};
+					showResult( result, !! json.success, data.message );
+				} );
+			} );
+		}
+
+		// Bulk-sync all in-scope users, one batch at a time, with a progress bar.
+		var syncBtn = document.getElementById( 'messageglobe-sync-all' );
+		if ( syncBtn ) {
+			syncBtn.addEventListener( 'click', function () {
+				var result = document.getElementById( 'messageglobe-sync-result' );
+				var wrap = document.getElementById( 'messageglobe-sync-progress-wrap' );
+				var bar = document.getElementById( 'messageglobe-sync-progress' );
+				var batchSize = 20;
+				var stats = { processed: 0, synced: 0, skipped: 0, failed: 0, total: 0 };
+
+				function setProgress( processed, total ) {
+					var pct = total > 0 ? Math.min( 100, Math.round( ( processed / total ) * 100 ) ) : 100;
+					if ( wrap ) { wrap.style.display = 'block'; }
+					if ( bar ) { bar.style.width = pct + '%'; bar.textContent = pct + '%'; }
+				}
+
+				function summary() {
+					return ( i18n.processed || 'Processed' ) + ': ' + stats.processed + ' / ' + stats.total
+						+ ' · ' + ( i18n.synced || 'Synced' ) + ': ' + stats.synced
+						+ ' · ' + ( i18n.skipped || 'Skipped' ) + ': ' + stats.skipped
+						+ ' · ' + ( i18n.failed || 'Failed' ) + ': ' + stats.failed;
+				}
+
+				function fail( message ) {
+					ready( syncBtn );
+					showResult( result, false, message );
+				}
+
+				function runBatch( offset ) {
+					post( 'messageglobe_sync_batch', { offset: offset, limit: batchSize }, function ( json ) {
+						if ( ! json.success ) {
+							fail( ( json.data && json.data.message ) || ( i18n.error || 'Request failed.' ) );
+							return;
+						}
+						var d = json.data || {};
+						stats.processed += d.processed || 0;
+						stats.synced += d.synced || 0;
+						stats.skipped += d.skipped || 0;
+						stats.failed += d.failed || 0;
+						setProgress( stats.processed, stats.total );
+						showResult( result, true, ( i18n.syncing || 'Syncing…' ) + ' ' + summary() );
+
+						// Advance while there is more to do and the last batch did work
+						// (a zero-work batch means we have reached the end).
+						if ( stats.processed < stats.total && ( d.processed || 0 ) > 0 ) {
+							runBatch( offset + batchSize );
+						} else {
+							ready( syncBtn );
+							setProgress( stats.total, stats.total );
+							showResult( result, true, ( i18n.syncDone || 'Sync complete.' ) + ' ' + summary() );
+						}
+					} );
+				}
+
+				busy( syncBtn, i18n.syncing || 'Syncing…' );
+				post( 'messageglobe_sync_total', {}, function ( json ) {
+					if ( ! json.success ) {
+						fail( ( json.data && json.data.message ) || ( i18n.error || 'Request failed.' ) );
+						return;
+					}
+					stats.total = ( json.data && json.data.total ) || 0;
+					if ( stats.total === 0 ) {
+						ready( syncBtn );
+						showResult( result, true, i18n.syncDone || 'Sync complete.' );
+						return;
+					}
+					setProgress( 0, stats.total );
+					runBatch( 0 );
+				} );
+			} );
+		}
+
 		// Email tab: hide the manual SMTP rows while the MessageGlobe preset is
 		// on. Rows are hidden (not disabled) so their values still submit and
 		// are never wiped by a preset-mode save.

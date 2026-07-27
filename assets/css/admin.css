@@ -19,3 +19,24 @@
 .messageglobe-settings code {
 	white-space: nowrap;
 }
+
+.messageglobe-settings .messageglobe-progress {
+	max-width: 40em;
+	height: 22px;
+	margin: 8px 0;
+	background: #f0f0f1;
+	border-radius: 3px;
+	overflow: hidden;
+}
+
+.messageglobe-settings .messageglobe-progress-bar {
+	width: 0;
+	height: 100%;
+	line-height: 22px;
+	font-size: 12px;
+	text-align: center;
+	white-space: nowrap;
+	color: #fff;
+	background: #2271b1;
+	transition: width 0.2s ease;
+}

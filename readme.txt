@@ -4,7 +4,7 @@ Tags: sms, smtp, email, woocommerce, notifications
 Requires at least: 5.8
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -28,7 +28,8 @@ A single API token from the [developers dashboard](https://dashboard.messageglob
 * Asynchronous SMS queue with retries — checkout and registration never wait on the network.
 * Sender ID picker populated live from your account, and HQ/LQ gateway choice.
 * Sync WordPress users into a MessageGlobe list (email + phone), filtered by selected roles, on registration, role change and profile update — queued and idempotent.
-* Activity log and one-click test buttons for SMS, email and the API connection.
+* Bulk "sync all existing users" to the list, with a live progress bar.
+* Activity log with a background-runs view, and one-click test buttons for SMS, email, the API connection, and the SMTP connection (connect + authenticate without sending).
 * Translation-ready; API responses follow the site language (English/Italian).
 
 == Installation ==
@@ -51,6 +52,11 @@ Yes. SMTP email routing and SMS work on any WordPress site; the WooCommerce feat
 In a WordPress option, or — more securely — in the `MESSAGEGLOBE_API_TOKEN` constant in `wp-config.php`, which is never written to the database.
 
 == Changelog ==
+
+= 1.1.0 =
+* Added a bulk "Sync all existing users" action on the Sync tab, with a live progress bar (batched via AJAX).
+* Added an SMTP "Test connection" button on the Email tab that connects and authenticates without sending an email.
+* Added a "Recent background runs" log on the Logs tab summarising the asynchronous SMS queue as WP-Cron drains it.
 
 = 1.0.1 =
 * Updated the plugin description to include the user → list sync feature.
